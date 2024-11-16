@@ -1,0 +1,51 @@
+{
+  "name": "fitness-social",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "setup:firebase": "node scripts/setupFirebase.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.7",
+    "browser-image-compression": "^2.0.2",
+    "date-fns": "^3.3.1",
+    "firebase": "^10.8.0",
+    "firebase-admin": "^11.11.1",
+    "framer-motion": "^11.0.3",
+    "intersection-observer": "^0.12.2",
+    "lodash": "^4.17.21",
+    "lucide-react": "^0.344.0",
+    "mapbox-gl": "^3.1.2",
+    "oauth": "^0.10.0",
+    "oauth-1.0a": "^2.2.6",
+    "react": "^18.3.1",
+    "react-avatar-editor": "^13.0.2",
+    "react-dom": "^18.3.1",
+    "react-grid-layout": "^1.4.4",
+    "react-intersection-observer": "^9.8.0",
+    "react-resizable": "^3.0.5",
+    "react-router-dom": "^6.22.1"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.14.202",
+    "@types/mapbox-gl": "^2.7.19",
+    "@types/node": "^20.11.19",
+    "@types/oauth": "^0.9.4",
+    "@types/react": "^18.3.5",
+    "@types/react-avatar-editor": "^13.0.2",
+    "@types/react-dom": "^18.3.0",
+    "@types/react-grid-layout": "^1.3.5",
+    "@types/react-resizable": "^3.0.7",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.18",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.2"
+  }
+}

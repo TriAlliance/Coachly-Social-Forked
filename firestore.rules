@@ -1,0 +1,253 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isEmailVerified() {
+      return request.auth.token.email_verified;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isParticipant(participants) {
+      return isAuthenticated() && request.auth.uid in participants;
+    }
+
+    // Enhanced Super admin check combining both methods
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/system/roles) &&
+         get(/databases/$(database)/documents/system/roles).data.superAdmins[request.auth.email]) ||
+        (exists(/databases/$(database)/documents/system/role) &&
+         request.auth.token.email in get(/databases/$(database)/documents/system/role).data.superAdmins)
+      );
+    }
+
+    // System configuration
+    match /system/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
+    // User profiles and integrations
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isOwner(userId) || isSuperAdmin();
+      allow delete: if isSuperAdmin();
+
+      match /private/{document=**} {
+        allow read, write: if isOwner(userId) || isSuperAdmin();
+      }
+
+      // Generic integrations
+      match /integrations/{integration} {
+        allow read, write: if isOwner(userId) || isSuperAdmin();
+      }
+
+      // Garmin specific integration
+      match /integrations/garmin {
+        allow read, write: if isOwner(userId) || isSuperAdmin();
+        
+        match /activities/{activityId} {
+          allow read: if isOwner(userId) || isSuperAdmin();
+          allow write: if isOwner(userId) || isSuperAdmin();
+        }
+
+        match /tokens/{tokenId} {
+          allow read: if isOwner(userId) || isSuperAdmin();
+          allow write: if isOwner(userId) || isSuperAdmin();
+        }
+      }
+    }
+
+    // Feed and Posts
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || isSuperAdmin()
+      );
+
+      match /comments/{commentId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid || isSuperAdmin()
+        );
+      }
+
+      match /likes/{likeId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+        allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      }
+    }
+
+    // Feed metadata and settings
+    match /feed/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /feedSettings/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Events
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isEmailVerified();
+      allow update: if isAuthenticated() && (
+        get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
+        isSuperAdmin() ||
+        request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['averageRating', 'totalRatings', 'participants'])
+      );
+      allow delete: if isAuthenticated() && (
+        get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
+        isSuperAdmin()
+      );
+    }
+
+    // Event Ratings
+    match /eventRatings/{ratingId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && 
+        ratingId.matches(request.auth.uid + '_.*');
+    }
+
+    // Groups
+    match /groups/{groupId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isEmailVerified();
+      allow update, delete: if isAuthenticated() && (
+        get(/databases/$(database)/documents/groups/$(groupId)).data.adminIds.hasAny([request.auth.uid]) ||
+        isSuperAdmin()
+      );
+    }
+
+    // Teams
+    match /teams/{teamId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isEmailVerified();
+      allow update, delete: if isAuthenticated() && (
+        get(/databases/$(database)/documents/teams/$(teamId)).data.adminIds.hasAny([request.auth.uid]) ||
+        isSuperAdmin()
+      );
+    }
+
+    // Chat Systems
+    match /chats/{chatId} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
+      allow update: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow delete: if isAuthenticated() && (
+        request.auth.uid in resource.data.participants || isSuperAdmin()
+      );
+      
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow create: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow update: if isAuthenticated() && request.auth.uid == resource.data.senderId;
+        allow delete: if isAuthenticated() && request.auth.uid == resource.data.senderId;
+      }
+    }
+
+    // Group Chats
+    match /groupChats/{groupId} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
+      allow update: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.createdBy;
+      
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/groupChats/$(groupId)).data.participants;
+        allow create: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/groupChats/$(groupId)).data.participants;
+        allow update: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/groupChats/$(groupId)).data.participants;
+        allow delete: if isAuthenticated() && request.auth.uid == resource.data.senderId;
+      }
+    }
+
+    // Garmin Integration Collections
+    match /garmin_auth/{userId} {
+      allow read: if isOwner(userId) || isSuperAdmin();
+      allow write: if isOwner(userId) || isSuperAdmin();
+    }
+
+    match /garmin_webhooks/{webhookId} {
+      allow read: if false; // Only accessible by server
+      allow write: if false; // Only accessible by server
+    }
+
+    match /garmin_activity_mapping/{mappingId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
+    // Logging Collections
+    match /activity_sync_logs/{logId} {
+      allow read: if isSuperAdmin();
+      allow write: if false; // Only written by server
+    }
+
+    match /security_logs/{logId} {
+      allow read: if isSuperAdmin();
+      allow write: if false; // Only written by server
+    }
+
+    match /system_activity/{logId} {
+      allow read: if isSuperAdmin();
+      allow write: if false; // Only written by server
+    }
+
+    match /garmin_webhook_logs/{logId} {
+      allow read: if isSuperAdmin();
+      allow write: if false; // Only written by server
+    }
+
+    match /garmin_error_logs/{logId} {
+      allow read: if isSuperAdmin();
+      allow write: if false; // Only written by server
+    }
+
+    // Rate Limiting
+    match /rate_limits/{limitId} {
+      allow read: if isSuperAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    match /garmin_rate_limits/{userId} {
+      allow read: if isOwner(userId) || isSuperAdmin();
+      allow write: if false; // Only written by server
+    }
+
+    // Admin Collections
+    match /scraper_jobs/{jobId} {
+      allow read, write: if isSuperAdmin();
+      
+      match /tasks/{taskId} {
+        allow read, write: if isSuperAdmin();
+      }
+    }
+
+    match /scraper_tasks/{taskId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /scraper_results/{resultId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /api_keys/{keyId} {
+      allow read, write: if isSuperAdmin();
+    }
+  }
+}
